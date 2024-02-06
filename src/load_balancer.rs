@@ -1,5 +1,7 @@
 mod server_list_parser;
 
+use std::io::{Read, Write};
+use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 
 pub struct LoadBalancer {
@@ -21,11 +23,22 @@ impl LoadBalancer {
 }
 
 pub fn process_request(
-    stream: std::net::TcpStream,
+    mut client_stream: std::net::TcpStream,
     servers: &Arc<Mutex<LoadBalancer>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut lb = servers.lock().unwrap();
-    println!("forwarding to server: {}", lb.next_server());
+    let server_addr = lb.next_server();
+
+    let addr = server_addr.parse::<std::net::SocketAddr>()?;
+    let mut server_stream = TcpStream::connect(addr)?;
+
+    let mut client_buffer = [0; 1024];
+    let bytes_read = client_stream.read(&mut client_buffer)?;
+    server_stream.write(&client_buffer[..bytes_read])?;
+
+    let mut server_buffer = [0; 1024];
+    let bytes_read = server_stream.read(&mut server_buffer)?;
+    client_stream.write(&server_buffer[..bytes_read])?;
 
     Ok(())
 }
